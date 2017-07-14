@@ -1,0 +1,13 @@
+
+env*/
+build/
+dist/
+*.egg-info/
+*.egg
+*.py[cod]
+__pycache__/
+*.so
+*~
+.swp
+.DS_Store
+

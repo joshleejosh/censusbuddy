@@ -1,0 +1,15 @@
+
+[MESSAGES CONTROL]
+
+# C0305: trailing-newlines
+# R0902: too-many-instance-attributes
+# R0914: too-many-locals
+disable=C0305,R0902,R0914
+
+[BASIC]
+
+# C0103
+# Some of these patterns default to >= 3 characters
+argument-rgx=[a-z_][a-z0-9_]{1,30}$
+variable-rgx=[a-z_][a-z0-9_]{1,30}$
+
