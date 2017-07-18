@@ -90,9 +90,16 @@ class CensusQuery(object):
 
         Returns:
             DataFrame
+
+        Example:
+            cendf = cenquery.query(['DP05_0001E', 'DP05_0001M'],
+                                   {'place':'*'},
+                                   {'state':'06'})
         """
 
         # transform predicates to formatted strings
+        if not self.validate_predicate(for_clause, in_clause):
+            return pd.DataFrame()
         _for = ' '.join(
             '{}:{}'.format(k, v)
             for k, v in list(for_clause.items()))
@@ -148,43 +155,45 @@ class CensusQuery(object):
                 except ValueError as err:
                     if self.verbose:
                         print('Can\'t convert column [{}] to numeric: [{}]'.format(vid, err))
-        print(df.dtypes)
 
         self.query_cache.save(cachekey, df)
         return df
 
-    # return valid filter sets (the 'in' clause of a query)
-    # for a given geo level (the 'for' clause of a query)
-    def geo_parameter_chart(self):
+    def validate_predicate(self, for_clause, in_clause):
         """
-        Formats the current dataset's geography chart into a dict that makes it
-        a little easier to see what the valid `in_clause`s are for a given
-        `for_clause` in `query()`.
-
+        Make sure that the given in_clause is valid for the for_clause.
         Returns:
-            OrderedDict: dict of lists of strings
-
-        Reference:
-            https://api.census.gov/data/2015/acs5/geography.json
+            bool
         """
         resp = requests.get(self.dataset['c_geographyLink'])
         check_response(resp)
+        ins = in_clause.keys()
+        db = resp.json()['fips']
 
-        # pivot data into something we can sort
-        dgeo = {}
-        for i in resp.json()['fips']:
-            dgeo[i['geoLevelId']] = i
+        for fori in for_clause.keys():
+            # Gather requirement options for the 'for' clause.
+            reqs = [
+                'requires' in rec and rec['requires'] or []
+                for rec in db
+                if rec['name'] == fori
+                ]
 
-        # iterating in ID order and inserting the first instance of each name
-        # gets us something close to a hierarchy
-        rv = collections.OrderedDict()
-        for i in sorted(dgeo.keys()):
-            geo = dgeo[i]
-            if not geo['name'] in rv:
-                rv[geo['name']] = []
-            rv[geo['name']].append(geo['requires'] if 'requires' in geo else [])
+            # Check each combination of requirements; if any of them
+            # match our "in" clause, we're ok.
+            forok = False
+            for j in reqs:
+                if sorted(j) == sorted(ins):
+                    forok = True
+                    break
 
-        return rv
+            if not forok:
+                print('ERROR: for clause [{}] won\'t work with in clause [{}]'.format(for_clause, in_clause))
+                print('    Try one of these combinations for the in clause:')
+                for j in reqs:
+                    print('        {}'.format(', '.join(j)))
+                return False
+
+        return True
 
     # ------------------------------------------------------
 
