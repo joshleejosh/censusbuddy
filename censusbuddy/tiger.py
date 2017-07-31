@@ -52,13 +52,13 @@ class TigerDownloader(object):
 
         self.configure(2016, 'us', 'nation', '20m')
 
-    def query(self, year, state, entity, resolution, simplify=0, force=False):
+    def query(self, year, state, entity, resolution, simplify=0, cache=True):
         """
         Wraps the configure() -> fetch() -> unpack() sequence.
         """
         self.configure(year, state, entity, resolution)
-        self.fetch(force=force)
-        return self.unpack(simplify=simplify, force=force)
+        self.fetch(cache=cache)
+        return self.unpack(simplify=simplify, cache=cache)
 
     def configure(self, year, state, entity, resolution):
         """
@@ -86,7 +86,7 @@ class TigerDownloader(object):
         """
         raise NotImplementedError()
 
-    def fetch(self, force=False):
+    def fetch(self, cache=True):
         """
         Download a zip file from the TIGER site. Must set this up with
         `configure()` first.
@@ -95,7 +95,7 @@ class TigerDownloader(object):
         """
         raise NotImplementedError()
 
-    def unpack(self, simplify=0, force=False):
+    def unpack(self, simplify=0, cache=True):
         """
         Unpack TIGER Shapefiles from a zipped bundle and convert to GeoJSON.
 
@@ -108,7 +108,7 @@ class TigerDownloader(object):
         """
 
         jfn = os.path.join(self.cache_dir, self.basename + '.geojson')
-        if os.path.exists(jfn) and not force:
+        if cache and os.path.exists(jfn):
             if self.verbose:
                 print('GeoJSON file [{}] exists, skipping conversion'.format(jfn))
             return gpd.read_file(jfn)
@@ -169,10 +169,10 @@ class TigerDownloaderHTTP(TigerDownloader):
         baseurl = 'https://{}{}'.format(TigerDownloader._HTTP_SERVER, bd)
         print('TODO: file listing, see [{}]'.format(baseurl)) # scrape the index page I guess?
 
-    def fetch(self, force=False):
+    def fetch(self, cache=True):
         ifn = self.basename + '.zip'
         ofn = os.path.join(self.cache_dir, self.basename + '.zip')
-        if os.path.exists(ofn) and not force:
+        if cache and os.path.exists(ofn):
             if self.verbose:
                 print('Zip file [{}] exists, skipping download'.format(ofn))
             return ofn
@@ -225,10 +225,10 @@ class TigerDownloaderFTP(TigerDownloader):
             self._login()
             self.ftp.dir(arg)
 
-    def fetch(self, force=False):
+    def fetch(self, cache=True):
         ifn = self.basename + '.zip'
         ofn = os.path.join(self.cache_dir, self.basename + '.zip')
-        if os.path.exists(ofn) and not force:
+        if cache and os.path.exists(ofn):
             print('Zip file [{}] exists, skipping download'.format(ofn))
             return ofn
 

@@ -19,7 +19,7 @@ class CensusQuery(object):
 
     Requires an API key to run queries; see: http://api.census.gov/data/key_signup.html
 
-    Usage is something like:
+    Usage looks something like:
         q = CensusQuery('cachedir', 'ACSProfile5Y2015', api_key)
         results = q.query(['DP04_0045E', 'DP04_0045M'],
                           {'place':'*'},
@@ -79,14 +79,15 @@ class CensusQuery(object):
         }
 
     # https://api.census.gov/data/2015/acs5/examples.html
-    def query(self, get_clause=[], for_clause={}, in_clause={}, force=False):
+    def query(self, get_clause=[], for_clause={}, in_clause={}, parameters={}, cache=True):
         """
         Query the Census API.
 
         Args:
             get_clause (list): names of variables to fetch.
-            for_clause (dict): filter criteria.
+            for_clause (dict): geo filter criteria.
             in_clause (dict): specifiers for the for clause.
+            parameters (dict): other parameters.
 
         Returns:
             DataFrame
@@ -98,35 +99,47 @@ class CensusQuery(object):
         """
 
         # transform predicates to formatted strings
-        if not self.validate_predicate(for_clause, in_clause):
-            return pd.DataFrame()
-        _for = ' '.join(
-            '{}:{}'.format(k, v)
-            for k, v in list(for_clause.items()))
-        _in = ' '.join(
-            '{}:{}'.format(k, v)
-            for k, v in list(in_clause.items()))
+        if for_clause and in_clause:
+            if not self.validate_predicate(for_clause, in_clause):
+                return pd.DataFrame()
+        _for = ''
+        if for_clause:
+            _for = ' '.join(
+                '{}:{}'.format(k, v)
+                for k, v in list(for_clause.items()))
+        _in = ''
+        if in_clause:
+            _in = ' '.join(
+                '{}:{}'.format(k, v)
+                for k, v in list(in_clause.items()))
 
-        # make sure we always get name and geoid
-        if 'GEOID' not in get_clause:
+        # make sure we always get name and geoid (if appropriate)
+        if 'GEOID' not in get_clause and self.get_vars(['GEOID']):
             get_clause.append('GEOID')
-        if 'NAME' not in get_clause:
+        if 'NAME' not in get_clause and self.get_vars(['NAME']):
             get_clause.append('NAME')
         _get = ','.join(sorted(get_clause))
 
-        if self.verbose:
-            print('get [{}]'.format(_get))
-            print('for [{}]'.format(_for))
-            print('in  [{}]'.format(_in))
-
-        url = self.dataset['distribution'][0]['accessURL']
-        parms = {'get':_get, 'for':_for, 'key':self.api_key,}
+        # build the parameter set
+        parms = {}
+        parms.update(parameters)
+        if _get:
+            parms['get'] = _get
+        if _for:
+            parms['for'] = _for
         if _in:
             parms['in'] = _in
+        parms['key'] = self.api_key
+        if self.verbose:
+            print('\n'.join('\t{} [{}]'.format(k, parms[k])
+                            for k in sorted(parms.keys())
+                            if k != 'key'))
+
+        url = self.dataset['distribution'][0]['accessURL']
 
         # check the cache
-        cachekey = self.query_cache.make_key(url, parms)
-        if not force:
+        if cache:
+            cachekey = self.query_cache.make_key(url, parms)
             df, cachefn = self.query_cache.load(cachekey)
             if df is not None:
                 if self.verbose:
@@ -143,20 +156,18 @@ class CensusQuery(object):
         ja = resp.json()
         df = pd.DataFrame(ja[1:], columns=ja[0])
 
-        # strip the weird prefix on geoid
-        #df['GEOID'] = df['GEOID'].str.replace('^.*US', '')
-
         # convert columns to numeric where indicated by the variable spec
         varlist = self.get_vars(get_clause)
         for vid, var in varlist.items():
             if 'predicateType' in var and var['predicateType'] == 'int':
                 try:
                     df[vid] = pd.to_numeric(df[vid])
-                except ValueError as err:
+                except Exception as err:
                     if self.verbose:
                         print('Can\'t convert column [{}] to numeric: [{}]'.format(vid, err))
 
-        self.query_cache.save(cachekey, df)
+        if cache:
+            self.query_cache.save(cachekey, df)
         return df
 
     def validate_predicate(self, for_clause, in_clause):
